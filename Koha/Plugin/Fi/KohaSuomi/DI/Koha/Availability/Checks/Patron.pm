@@ -148,8 +148,9 @@ Koha::Exceptions::Patron::Debt additional fields:
 
 sub debt_hold {
     my ($self) = @_;
-
-    my $amount = $self->patron->account->balance;
+    
+    my $amount = $self->patron->account->non_issues_charges;
+    #my $amount = $self->patron->account->balance;
     my $maxoutstanding = C4::Context->preference("maxoutstanding");
     return $self->_debt($amount, $maxoutstanding);
 }
