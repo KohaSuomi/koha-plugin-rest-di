@@ -217,11 +217,11 @@ sub expired {
     my ($self) = @_;
 
     my $patron = $self->patron;
-    if ($patron->is_expired) {
-        return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Patron::CardExpired->new(
-            expiration_date => $patron->dateexpiry
-        );
-    }
+    #if ($patron->is_expired) {
+    #    return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Patron::CardExpired->new(
+    #        expiration_date => $patron->dateexpiry
+    #    );
+    #}
     return;
 }
 
