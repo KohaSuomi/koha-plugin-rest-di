@@ -169,7 +169,7 @@ Koha::Exceptions::Patron::Debt additional fields:
 sub debt_renew_opac {
     my ($self) = @_;
 
-    my $amount = $self->patron->account->balance;
+    my $amount = $self->patron->account->non_issues_charges;
     my $maxoutstanding = C4::Context->preference("OPACFineNoRenewals");
     return $self->_debt($amount, $maxoutstanding);
 }
