@@ -58,10 +58,12 @@
       "description": "country of patron's primary address"
     },
     "email": {
-      "$ref": "../x-primitives.json#/email"
+      "type": ["string", "null"],
+      "description": "patron's email address"
     },
     "phone": {
-      "$ref": "../x-primitives.json#/phone"
+      "type": ["string", "null"],
+      "description": "the phone number for patron's primary address"
     },
     "mobile": {
       "type": ["string", "null"],

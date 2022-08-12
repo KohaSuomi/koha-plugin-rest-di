@@ -588,6 +588,7 @@ sub _parameters_require_modification_request {
         'privacy' => 1,
         'sms_number' => 1,
         'email' => 1,
+        'phone' => 1,
     };
 
     my $params = {
