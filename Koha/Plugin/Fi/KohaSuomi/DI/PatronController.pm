@@ -159,7 +159,7 @@ sub get {
         if ($patron->is_going_to_expire) {
             $ret->{expiry_date_near} = 1;
         }
-
+        
         return $c->render(status => 200, openapi => $ret);
     } catch {
         if ( $_->isa('DBIx::Class::Exception') ) {
