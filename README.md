@@ -41,6 +41,70 @@ To use all the functionality the plugin provides, the following permissions are 
  - updatecharges
    - payout
    - remaining_permissions
+   
+### Sysprefs
+
+Plugin can take advantage of following Koha sys/other preferences:
+
+  - OPACHoldRequests (RequestOnOpac pre-21.11)
+  - BlockExpiredPatronOpacActions
+  - ReservesControlBranch
+  
+  - EnhancedMessagingPreferences
+  - OPACPatronDetails
+  - EnhancedMessagingPreferencesOPAC
+  - OpacRenewalAllowed
+  - item-level_itypes
+  
+  - ValidatePhoneNumber
+  
+  - AllowHoldsOnPatronsPossessions
+  - AllowMultipleIssuesOnABiblio
+  
+  - AllowHoldsOnDamagedItems
+  - IndependentBranches
+  - HomeOrHoldingBranch
+  - AllowItemsOnHoldCheckoutSIP
+  - AllowItemsOnHoldCheckoutSCO
+  - decreaseLoanHighHolds
+  - UseBranchTransferLimits
+  - BranchTransferLimitsType
+  
+  - OPACHoldsIfAvailableAtPickup
+  - OPACHoldsIfAvailableAtPickupExceptions
+  
+  - CircControl
+  - canreservefromotherbranches
+  
+  - noissuescharge
+  - AllFinesNeedOverride
+  - NoIssuesChargeGuarantees
+  - maxoutstanding
+  - OPACFineNoRenewals
+  - maxreserves
+  
+  - ArticleRequests
+  - OpacHiddenItems
+  
+  - MaxSearchResultsItemsPerRecordStatusCheck
+  
+  - AgeRestrictionOverride
+  - AllowFineOverride
+  - OverduesBlockCirc
+  - AllowTooManyOverride
+  - IssueLostItem
+  - AllowNotForLoanOverride
+  - RentalFeesCheckoutConfirmation
+  - AllowRenewalLimitOverride
+  
+  - SMSSendDriver
+  - TalkingTechItivaPhoneNotification
+  
+  - BorrowersLog
+  - SuomiFiMessaging
+  - ILLModule
+  - AutoRenewalNotices
+  
 
 ### Installing without a KPZ package
 
