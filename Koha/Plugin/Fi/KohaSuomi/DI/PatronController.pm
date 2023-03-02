@@ -30,6 +30,8 @@ use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Availability::Checks::Patron;
 use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Patron::Message::Preferences;
 use POSIX qw(strftime);
 
+use constant ATTRIBUTE_HOLDID => 'HOLDID';
+
 =head1 Koha::Plugin::Fi::KohaSuomi::DI::PatronController
 
 A class implementing the controller methods for the patron-related API
@@ -56,6 +58,14 @@ sub get {
 
         my $ret = $patron->to_api;
 
+        my $borrower_attribute_holdid = $patron->get_extended_attribute(ATTRIBUTE_HOLDID);
+        # NEEDS FIX USE ret->{holdid}
+        if ($borrower_attribute_holdid){
+            $ret->{other_name} = $borrower_attribute_holdid->attribute;
+        }
+        else {
+            $ret->{other_name} = "";
+        }
         if ($c->validation->param('query_blocks')) {
             my $patron_checks = Koha::Plugin::Fi::KohaSuomi::DI::Koha::Availability::Checks::Patron->new($patron);
 
@@ -182,7 +192,6 @@ sub update {
             openapi => { error => "Preferences do not allow changing patrons details"}
         );
     }
-
     return try {
         my $patron_id = $c->validation->param('patron_id');
         my $patron = Koha::Patrons->find($patron_id);
@@ -202,36 +211,68 @@ sub update {
         if (keys %{$verification->{required}}) {
             # Map from API field names
             my $changes = {};
+            my $extended_attributes = {};
+            my $holdid_modreq;
+
             my $from_api_mapping = $patron->from_api_mapping;
-            while (my ($key, $value) = each %{ $verification->{required} } ) {
-                $changes->{$from_api_mapping->{$key} // $key} = $value;
+            while ( my ( $key, $value ) = each %{ $verification->{required} } ) {
+                $changes->{ $from_api_mapping->{$key} // $key } = $value;
             }
+            while ( my ( $key, $value ) = each %{ $changes->{extended_attributes} } ) {
+                $extended_attributes->{ $from_api_mapping->{$key} // $key } = $value;
+            }
+
+            $holdid_modreq = $extended_attributes->{"HOLDID"};
+            #remove no longer needed other_name mod request from hash for old othernames NEEDS FIX USE ret->{holdid} in get
+            delete %$changes{othernames};
+
             $changes->{changed_fields} = join ',', keys %{$changes};
             $changes->{borrowernumber} = $patron_id;
-            
-            if ($changes->{othernames}){
-                my $othernamesmodreq = $changes->{othernames};
 
-                my $patron = Koha::Patrons->find( $patron_id );
-                my $old_othernames  = $patron->othernames;
+            if ($holdid_modreq) {
 
-                if ($old_othernames ne $othernamesmodreq){
+                my $patron = Koha::Patrons->find($patron_id);
+                my $borrower_attribute_holdid = $patron->get_extended_attribute(ATTRIBUTE_HOLDID);
+                my $old_holdid;
 
-                    my $checkparams = { 
-                    othernames => $othernamesmodreq
-                    };
+                if ($borrower_attribute_holdid) {
+                    $old_holdid = $borrower_attribute_holdid->attribute;
+                }
+                else {
+                    $old_holdid = "";
+                }
+
+                if ( $old_holdid ne $holdid_modreq ) {
+
                     my $ok = 1;
-                    my $change = {}; 
-                    $change->{other_name} = $othernamesmodreq;
-    
-                    $ok = 0 if Koha::Patrons->find($checkparams);
-    
-                    if(!$ok) { 
-                        return $c->render(status => 409, openapi => { error => "Duplicate othernames", conflict => $change });
+                    # my $same_holdid_patrons = Koha::Patrons->filter_by_attribute_value($othernamesmodreq);
+                    # $log->debug(Dumper($same_holdid_patrons));
+                    my $dbh = C4::Context->dbh();
+                    my $sth;
+                    my $count;
+
+                    $sth = $dbh->prepare(
+                        q{
+                            SELECT borrowernumber from borrower_attributes where code = 'HOLDID' and attribute = ?
+                            }
+                    );
+
+                    $sth->execute($holdid_modreq) or die $dbh->errstr;
+                    my $matched_count = $sth->rows;
+
+                    $ok = 0 if $matched_count;
+
+                    if ( !$ok ) {
+                        return $c->render( status => 409, openapi => { error => "Duplicate Hold ID", conflict => $holdid_modreq } );
 
                     }
-                }   
-            }   
+                    #Patron attribute types must be defined in Koha in order to be able to approve the mod request and update the attribute values
+                    my $valid_json_text = '[{"code":"HOLDID","value":"' . $holdid_modreq . '"}]';
+
+                    #my $valid_json_text    = '[{"code":"TEST1","value":"test"},{"code":"HOLDID","value":"newholdid"}]';
+                    $changes->{extended_attributes} = $valid_json_text;
+                }
+            }
             Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
             Koha::Patron::Modification->new($changes)->store();
 
