@@ -59,9 +59,9 @@ sub get {
         my $ret = $patron->to_api;
 
         my $borrower_attribute_holdid = $patron->get_extended_attribute(ATTRIBUTE_HOLDID);
-        # NEEDS FIX USE ret->{holdid}
+
         if ($borrower_attribute_holdid){
-            $ret->{other_name} = $borrower_attribute_holdid->attribute;
+            $ret->{holdid} = $borrower_attribute_holdid->attribute;
         }
 
         if ($c->validation->param('query_blocks')) {
@@ -207,23 +207,26 @@ sub update {
             }
         }
         if (keys %{$verification->{required}}) {
+
             # Map from API field names
             my $changes = {};
             my $extended_attributes = {};
-            my $holdid_modreq;
 
             my $from_api_mapping = $patron->from_api_mapping;
             while ( my ( $key, $value ) = each %{ $verification->{required} } ) {
                 $changes->{ $from_api_mapping->{$key} // $key } = $value;
             }
             if ($patron->get_extended_attribute(ATTRIBUTE_HOLDID)) {
-                
+
                 while ( my ( $key, $value ) = each %{ $changes->{extended_attributes} } ) {
-                $extended_attributes->{ $from_api_mapping->{$key} // $key } = $value;
+                    $extended_attributes->{ $from_api_mapping->{$key} // $key } = $value;
                 }
             }
+
             #$holdid_modreq = $extended_attributes->{"HOLDID"};
-            $holdid_modreq = $changes->{othernames};
+            my $holdid_modreq = $changes->{holdid};
+            my $othernames_id_modreq = $changes->{othernames};
+
             #remove no longer needed other_name mod request from hash for old othernames NEEDS FIX USE ret->{holdid} in get
             #delete %$changes{othernames};
 
@@ -234,10 +237,10 @@ sub update {
                 my $patron = Koha::Patrons->find($patron_id);
                 my $borrower_attribute_holdid = $patron->get_extended_attribute(ATTRIBUTE_HOLDID);
                 my $old_holdid;
-                
+
                 if ($borrower_attribute_holdid) {
                     $old_holdid = $borrower_attribute_holdid->attribute;
-                    
+
                     if ( $old_holdid ne $holdid_modreq ) {
                         my $ok = 1;
                         # my $same_holdid_patrons = Koha::Patrons->filter_by_attribute_value($othernamesmodreq);
@@ -258,8 +261,8 @@ sub update {
                         $ok = 0 if $matched_count;
 
                         if ( !$ok ) {
-                            my $change = {}; 
-                            $change->{other_name} = $holdid_modreq; 
+                            my $change = {};
+                            $change->{holdid} = $holdid_modreq;
                             return $c->render( status => 409, openapi => { error => "Duplicate Hold ID", conflict => $change } );
                         }
                         #Patron attribute types must be defined in Koha in order to be able to approve the mod request and update the attribute values
@@ -267,53 +270,30 @@ sub update {
 
                         #my $valid_json_text    = '[{"code":"TEST1","value":"test"},{"code":"HOLDID","value":"newholdid"}]';
                         $changes->{extended_attributes} = $valid_json_text;
-                        delete %$changes{othernames};
+                        delete %$changes{holdid};
 
                         Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
                         Koha::Patron::Modification->new($changes)->store();
                         return $c->render(status => 202, openapi => {});
                     }
                     else {
-                        delete %$changes{othernames};
                         delete %$changes{extended_attributes};
-                        Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
-                        Koha::Patron::Modification->new($changes)->store();
-                        return $c->render(status => 202, openapi => {});
-                    }
-                }
-                else {
-                    my $othernames_modreq = $changes->{othernames};
-                    my $patron = Koha::Patrons->find( $patron_id );
-                    my $old_othernames  = $patron->othernames;
-
-                    if ($old_othernames ne $othernames_modreq){
-
-                        my $checkparams = { 
-                        othernames => $othernames_modreq
-                        };
-                        my $ok = 1;
-                        my $change = {}; 
-                        $change->{other_name} = $othernames_modreq;
-        
-                        $ok = 0 if Koha::Patrons->find($checkparams);
-        
-                        if(!$ok) { 
-                            return $c->render(status => 409, openapi => { error => "Duplicate othernames", conflict => $change });
-                        }
-                        
-                        Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
-                        Koha::Patron::Modification->new($changes)->store();
-
-                        return $c->render(status => 202, openapi => {});
-                    }
-                    else {
-                        delete %$changes{othernames};
+                        delete %$changes{holdid};
                         Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
                         Koha::Patron::Modification->new($changes)->store();
                         return $c->render(status => 202, openapi => {});
                     }
                 }
             }
+            else {
+                delete %$changes{extended_attributes};
+                delete %$changes{holdid};
+                Koha::Patron::Modifications->search({ borrowernumber => $patron_id })->delete;
+                Koha::Patron::Modification->new($changes)->store();
+                return $c->render(status => 202, openapi => {});
+            }
+
+
         }
     }
     catch {
@@ -367,7 +347,6 @@ sub purge_checkout_history {
         Koha::Exceptions::rethrow_exception($_);
     };
 }
-
 
 =head3 edit_messaging_preferences
 
