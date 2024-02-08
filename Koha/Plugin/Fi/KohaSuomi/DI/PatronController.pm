@@ -30,6 +30,7 @@ use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Availability::Checks::Patron;
 use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Patron::Message::Preferences;
 
 use constant ATTRIBUTE_HOLDID => 'HOLDID';
+use POSIX qw(strftime);
 
 =head1 Koha::Plugin::Fi::KohaSuomi::DI::PatronController
 
@@ -706,18 +707,34 @@ sub validate_credentials {
         );
     }
 
-    # Update last login date after retrieving patron so that
-    # the previous date is returned:
-    $patron->update_lastseen('login');
-
-    if ($patron->lost) {
+    if ($patron->account_locked || !C4::Auth::checkpw_internal($userid, $password)) {
+        $patron->update({ login_attempts => $patron->login_attempts + 1 });
+        $patron->store;
         return $c->render(
-            status => 403,
-            openapi => {
-                error => "Patron's card has been marked as 'lost'. Access forbidden."
-            }
+            status => 401, 
+            openapi => { error => "Login failed." }
         );
-    }
+    }        
+
+    # Credentials valid and account not locked
+        
+    # Check for lost card and return 403 if so
+    if ($patron->lost) {
+            return $c->render( 
+                status => 403, 
+                openapi => { 
+                    error => "Patron's card has been marked as 'lost'. Access forbidden." 
+                }
+            );
+        }
+        
+    # Update lastseen and login_attempts
+    my $lastseen = strftime "%Y-%m-%d %H:%M:%S", localtime;
+    $patron->update({ lastseen => $lastseen });
+    $patron->update({ login_attempts => 0 });
+    $patron->store;
+
+    # Return patron information   
     return $c->render(status => 200, openapi => $patron->to_api( { user => $current_user } ));
 }
 
