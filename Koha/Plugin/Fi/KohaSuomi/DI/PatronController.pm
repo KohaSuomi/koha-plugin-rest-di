@@ -530,13 +530,13 @@ sub list_checkouts {
                 'item.itype', 'item.homebranch', 'item.holdingbranch', 'item.ccode', 'item.permanent_location',
                 'item.enumchron', 'item.biblionumber', 'item.barcode',
                 'biblioitem.itemtype', 'biblioitem.publicationyear',
-                'biblio.title', 'biblio.subtitle', 'biblio.part_number', 'biblio.part_name', 'biblio.unititle', 'biblio.copyrightdate'
+                'biblio.title', 'biblio.author', 'biblio.subtitle', 'biblio.part_number', 'biblio.part_name', 'biblio.unititle', 'biblio.copyrightdate'
             ],
             '+as' => [
                 'item_itype', 'homebranch', 'holdingbranch', 'ccode', 'permanent_location', 
                 'enumchron', 'biblionumber', 'external_id',
                 'biblio_itype', 'publication_year',
-                'title', 'subtitle', 'part_number', 'part_name', 'uniform_title', 'copyright_date'
+                'title', 'author', 'subtitle', 'part_number', 'part_name', 'uniform_title', 'copyright_date'
             ]
         };
 
