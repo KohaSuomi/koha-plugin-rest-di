@@ -541,7 +541,6 @@ sub list_checkouts {
                 'title', 'author', 'subtitle', 'part_number', 'part_name', 'uniform_title', 'copyright_date'
             ]
         };
-
         # Extract reserved params
         my ( $filtered_params, $reserved_params ) = $c->extract_reserved_params($args);
 
@@ -651,7 +650,20 @@ sub list_checkouts {
 
             $result->{'renewable'} = $can_renew ? Mojo::JSON->true : Mojo::JSON->false;
             $result->{'renewability_blocks'} = $blocks;
-
+            
+            if ((!$result->{'biblionumber'})&&(!$result->{'title'})){
+                (
+                    $result->{'author'},
+                    $result->{'title'},
+                    $result->{'subtitle'},
+                    $result->{'biblio_itype'},
+                    $result->{'copyright_date'},
+                    $result->{'biblio_id'},
+                    $result->{'enumchron'}
+                )  = get_deleteditem_checkout($result->{'checkout_id'});
+                
+                $result->{'note'} = 'Deleted';
+            }
             push @results, $result;
         }
 
@@ -669,6 +681,84 @@ sub list_checkouts {
             );
         }
     };
+}
+
+# Fetch details for an old checkout when the checked out item has been deleted or the item's and biblio's data are both deleted
+# Requires constraint old_issues_ibfk_2 to be dropped from old_issues table
+sub get_deleteditem_checkout {
+    my ($old_issue_id) = @_;
+    my $dbh = C4::Context->dbh;
+
+    my $sth = $dbh->prepare("SELECT itemnumber from old_issues WHERE issue_id=?");
+    $sth->execute($old_issue_id);
+    my $deleted_item = $sth->fetchrow;
+    if ($deleted_item) {
+        $sth = $dbh->prepare("SELECT biblionumber FROM deleteditems WHERE itemnumber=?");
+        $sth->execute($deleted_item);
+        my $delitem_biblionumber = $sth->fetchrow;
+        $sth->finish;
+        my $biblio_data = GetBiblioData($delitem_biblionumber, $deleted_item);
+
+        if (!defined $biblio_data) {
+            $biblio_data = GetDeletedBiblioData($delitem_biblionumber, $deleted_item);
+        }
+        if (!defined $biblio_data) {
+            return;
+        }
+        return $biblio_data->{author},
+        $biblio_data->{title},
+        $biblio_data->{subtitle},
+        $biblio_data->{itemtype},
+        $biblio_data->{copyrightdate},
+        $delitem_biblionumber,
+        $biblio_data->{enumchron};
+    }
+
+    else {
+       return;
+    }
+}
+
+sub GetBiblioData {
+    my ($bibnum, $itemnum) = @_;
+    my $dbh = C4::Context->dbh;
+
+    my $query = " SELECT * , biblioitems.notes AS bnotes, biblioitems.itemtype, itemtypes.notforloan as bi_notforloan, biblio.notes, deleteditems.enumchron
+            FROM biblio
+            LEFT JOIN biblioitems ON biblio.biblionumber = biblioitems.biblionumber
+            LEFT JOIN itemtypes ON biblioitems.itemtype = itemtypes.itemtype
+            LEFT JOIN deleteditems ON biblio.biblionumber = deleteditems.biblionumber
+            WHERE biblio.biblionumber = ?
+            AND deleteditems.itemnumber = ?";
+
+    my $sth = $dbh->prepare($query);
+    $sth->execute($bibnum, $itemnum);
+    my $data;
+    $data = $sth->fetchrow_hashref;
+    $sth->finish;
+    
+    return ($data);
+}
+
+sub GetDeletedBiblioData {
+    my ($bibnum, $itemnum) = @_;
+    my $dbh = C4::Context->dbh;
+
+    my $query = " SELECT * , deletedbiblioitems.notes AS bnotes, deletedbiblioitems.itemtype, itemtypes.notforloan as bi_notforloan, deletedbiblio.notes, deleteditems.enumchron
+            FROM deletedbiblio
+            LEFT JOIN deletedbiblioitems ON deletedbiblio.biblionumber = deletedbiblioitems.biblionumber
+            LEFT JOIN itemtypes ON deletedbiblioitems.itemtype = itemtypes.itemtype
+            LEFT JOIN deleteditems ON deletedbiblio.biblionumber = deleteditems.biblionumber
+            WHERE deletedbiblio.biblionumber = ?
+            AND deleteditems.itemnumber = ?";
+
+    my $sth = $dbh->prepare($query);
+    $sth->execute($bibnum, $itemnum);
+    my $data;
+    $data = $sth->fetchrow_hashref;
+    $sth->finish;
+    
+    return ($data);
 }
 
 sub validate_credentials {
