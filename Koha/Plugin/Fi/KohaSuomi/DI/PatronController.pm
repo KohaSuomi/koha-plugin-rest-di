@@ -31,6 +31,7 @@ use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Patron::Message::Preferences;
 
 use constant ATTRIBUTE_HOLDID => 'HOLDID';
 use POSIX qw(strftime);
+use C4::Log qw( logaction cronlogaction );
 
 =head1 Koha::Plugin::Fi::KohaSuomi::DI::PatronController
 
@@ -823,6 +824,8 @@ sub validate_credentials {
     $patron->update({ lastseen => $lastseen });
     $patron->update({ login_attempts => 0 });
     $patron->store;
+    
+    logaction( 'MEMBERS', 'LOGIN', $patron->borrowernumber, '', 'REST API' );
 
     # Return patron information   
     return $c->render(status => 200, openapi => $patron->to_api( { user => $current_user } ));
