@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+Anything marked with [**BC**] is known to affect backward compatibility with previous versions.
+
+## [23.11.07] - 2024-08-07
+
+### Added
+
+- Added support for paging items in biblio search availability (limit and offset query parameters). Also the total item count (items_total) and checked item count (items_checked) is now returned.
+
+## [23.11.06] - 2024-06-20
+
+### Added
+
+- Added support for updating patron messages to mark them messages read.
+- Added support for querying only unread patron messages.
+
+### Changed
+
+- [**BC**] Suspended holds are no longer included in hold queue length calculation by default. Query parameter include_suspended_in_hold_queue=1 can be used in requests to include suspended holds.
+
+### Fixed
+
+- Patron category library limitations are now considered when retrieving possible hold pick up locations.
+- Added mandatory plugin installation methods.
+
+
+## [23.11.05] - 2024-05-16
+
+### Fixed
+
+- Fixed the check for maximum checkouts to work properly with Koha 23.11 changes (Koha bug 32496).
+
+
 ## [23.11.04] - 2024-02-02
 
 ### Added
