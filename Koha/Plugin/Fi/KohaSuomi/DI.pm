@@ -19,7 +19,7 @@ use Modern::Perl;
 
 use base qw(Koha::Plugins::Base);
 
-our $VERSION = "{VERSION}";
+our $VERSION = "1.0.0";
 
 our $metadata = {
     name            => 'REST API plugin for Koha for discovery interfaces',
