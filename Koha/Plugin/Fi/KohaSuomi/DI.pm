@@ -31,7 +31,7 @@ our $metadata = {
     version         => $VERSION,
     description     => 'This plugin implements API endpoints required'
                      . ' for the integration of advanced discovery interfaces'
-                     . ' with Koha.'
+                     . ' with Koha. (Paikalliskannat)'
 };
 
 sub new {
