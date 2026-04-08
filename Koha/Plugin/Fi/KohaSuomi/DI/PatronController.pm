@@ -66,7 +66,16 @@ sub get {
         }
 
         if ($c->validation->param('query_blocks')) {
-            my $patron_checks = Koha::Plugin::Fi::KohaSuomi::DI::Koha::Availability::Checks::Patron->new($patron);
+            # Pre-fetch patron holds to avoid repeated database queries in checks
+            my @patron_holds = Koha::Holds->search({
+                borrowernumber => $patron->borrowernumber,
+                found => undef,
+            })->as_list;
+            
+            my $patron_checks = Koha::Plugin::Fi::KohaSuomi::DI::Koha::Availability::Checks::Patron->new(
+                $patron,
+                { holds => \@patron_holds }
+            );
 
             my %blocks;
             my $ex;

@@ -31,7 +31,7 @@ use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Hold;
 use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Patron;
 
 sub new {
-    my ($class, $patron) = @_;
+    my ($class, $patron, $params) = @_;
 
     unless ($patron) {
         Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::MissingParameter->throw(
@@ -46,7 +46,15 @@ sub new {
 
     my $self = {
         patron => $patron,
+        _holds_cache => undef,
+        _holds_count_cache => undef,
     };
+
+    # If holds are pre-fetched and passed, cache them
+    if ($params && $params->{holds}) {
+        $self->{_holds_cache} = $params->{holds};
+        $self->{_holds_count_cache} = scalar @{$params->{holds}};
+    }
 
     bless $self, $class;
 }
@@ -148,7 +156,7 @@ Koha::Exceptions::Patron::Debt additional fields:
 
 sub debt_hold {
     my ($self) = @_;
-    
+
     my $amount = $self->patron->account->non_issues_charges;
     #my $amount = $self->patron->account->balance;
     my $maxoutstanding = C4::Context->preference("maxoutstanding");
@@ -191,10 +199,9 @@ sub exceeded_maxreserves {
     my $patron = $self->patron;
     my $max = C4::Context->preference('maxreserves');
     return unless $max;
-    my $holds = Koha::Holds->search({
-        borrowernumber => $patron->borrowernumber,
-        found => undef,
-    })->count();
+
+    my $holds = $self->_get_holds_count();
+
     if ($holds && $max && $holds >= $max) {
         return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Hold::MaximumHoldsReached->new(
             max_holds_allowed => 0+$max,
@@ -202,6 +209,54 @@ sub exceeded_maxreserves {
         );
     }
     return;
+}
+
+=head3 _get_holds_count
+
+Internal method that returns the count of patron's non-found holds.
+Uses caching to avoid repeated database queries.
+
+=cut
+
+sub _get_holds_count {
+    my ($self) = @_;
+
+    return $self->{_holds_count_cache} if defined $self->{_holds_count_cache};
+
+    my $patron = $self->patron;
+    my $holds_rs = Koha::Holds->search({
+        borrowernumber => $patron->borrowernumber,
+        found => undef,
+    });
+
+    # Cache the count
+    $self->{_holds_count_cache} = $holds_rs->count();
+
+    return $self->{_holds_count_cache};
+}
+
+=head3 get_patron_holds
+
+Returns an array of patron's non-found holds.
+Uses caching to avoid repeated database queries.
+
+=cut
+
+sub get_patron_holds {
+    my ($self) = @_;
+
+    return $self->{_holds_cache} if defined $self->{_holds_cache};
+
+    my $patron = $self->patron;
+    $self->{_holds_cache} = [Koha::Holds->search({
+        borrowernumber => $patron->borrowernumber,
+        found => undef,
+    })->as_list];
+
+    # Also cache the count while we have the list
+    $self->{_holds_count_cache} = scalar @{$self->{_holds_cache}};
+
+    return $self->{_holds_cache};
 }
 
 =head3 expired
