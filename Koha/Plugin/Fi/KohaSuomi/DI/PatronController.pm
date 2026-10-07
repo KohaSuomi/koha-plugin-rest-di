@@ -20,6 +20,7 @@ use Modern::Perl;
 use Mojo::Base 'Mojolicious::Controller';
 
 use C4::Auth qw( checkpw haspermission );
+use Koha::DateUtils qw( dt_from_string );
 
 use Koha::Biblios;
 use Koha::Patron::Messages;
@@ -483,7 +484,7 @@ sub delete_messages {
             
             if (($message) && ($message->message_type eq "B")){
                 if ($patron->borrowernumber == $message->borrowernumber){
-                    $message->delete;
+                    $message->update( { patron_read_date => dt_from_string } );
                     return $c->render( status => 204, openapi => {} );
                 }
                 else {
