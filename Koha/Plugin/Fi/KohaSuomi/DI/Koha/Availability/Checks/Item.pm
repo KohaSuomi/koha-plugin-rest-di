@@ -28,8 +28,8 @@ use C4::Reserves;
 
 use Koha::AuthorisedValues;
 use Koha::Database;
+use Koha::Hold::HoldsQueueItems;
 use Koha::DateUtils qw( dt_from_string );
-use Koha::Holds;
 use Koha::ItemTypes;
 use Koha::Items;
 use Koha::Item::Transfers;
@@ -176,26 +176,122 @@ sub held {
     my ($self) = @_;
 
     my $item = $self->item;
-    if (my ($s, $reserve) = C4::Reserves::CheckReserves($item)) {
-        if (!$reserve) {
-            return;
+
+    # Mirror C4::Reserves::CheckReserves early returns so that items that are
+    # not trappable (e.g. on-order / not-for-loan items) are not reported as
+    # held. This is especially important for on-order items that already have
+    # holds placed on them.
+    return if ( $item->damaged && !C4::Context->preference('AllowHoldsOnDamagedItems') );
+
+    my @SkipHoldTrapOnNotForLoanValue = split( '\\|', C4::Context->preference('SkipHoldTrapOnNotForLoanValue') );
+    return if grep { $_ eq $item->notforloan } @SkipHoldTrapOnNotForLoanValue;
+
+    my $dont_trap = C4::Context->preference('TrapHoldsOnOrder') ? $item->notforloan > 0 : $item->notforloan;
+    if ( !$dont_trap ) {
+        my $effective_item_type = $item->effective_itemtype;
+        our %ITEMTYPE_NOTFORLOAN_CACHE;
+        my $itemtype_notforloan;
+        if ( exists $ITEMTYPE_NOTFORLOAN_CACHE{$effective_item_type} ) {
+            $itemtype_notforloan = $ITEMTYPE_NOTFORLOAN_CACHE{$effective_item_type};
+        } else {
+            my $item_type = Koha::ItemTypes->find($effective_item_type);
+            $itemtype_notforloan = $item_type ? $item_type->notforloan : 0;
+            $ITEMTYPE_NOTFORLOAN_CACHE{$effective_item_type} = $itemtype_notforloan;
         }
-        # Always consider holds in the following states as held:
-        # 'Waiting' - Hold is available for pickup
-        # 'Processing' - Hold is being processed after returning with SIP
-        #                (controlled by HoldsNeedProcessingSIP preference)
-        # Otherwise check for item-specific hold and whether it can be checked out.
-        if ($s eq 'Waiting' || $s eq 'Processing'
-            || ($reserve->{'itemnumber'} == $item->itemnumber
-            && !C4::Context->preference("AllowItemsOnHoldCheckoutSIP")
-            && !C4::Context->preference("AllowItemsOnHoldCheckoutSCO"))
-        ) {
+        return if $itemtype_notforloan;
+    } else {
+        return;
+    }
+
+    my $allow_sip = C4::Context->preference('AllowItemsOnHoldCheckoutSIP');
+    my $allow_sco = C4::Context->preference('AllowItemsOnHoldCheckoutSCO');
+
+    my $dbh = C4::Context->dbh;
+
+    # Found holds (Waiting / Processing / Transferred). Use a direct, cached
+    # query to avoid DBIC overhead and the full CheckReserves scan.
+    my $found_sth = $dbh->prepare_cached(q{
+        SELECT borrowernumber, found
+        FROM reserves
+        WHERE itemnumber = ? AND found IN ('W','P','T') AND suspend = 0
+        LIMIT 1
+    });
+    $found_sth->execute( 0 + $item->itemnumber );
+    my ( $found_bn, $found_status_raw ) = $found_sth->fetchrow_array;
+    $found_sth->finish;
+
+    if ( defined $found_status_raw ) {
+        my $status = $found_status_raw eq 'W' ? 'Waiting'
+                   : $found_status_raw eq 'P' ? 'Processing'
+                   : 'Transferred';
+
+        # Waiting and Processing holds always make the item held.
+        if ( $status eq 'Waiting' || $status eq 'Processing' ) {
             return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
-                borrowernumber => 0+$reserve->{'borrowernumber'},
-                status => $s
+                borrowernumber => 0 + $found_bn,
+                status        => $status,
+            );
+        }
+
+        # Transferred holds make the item held only when checking out an
+        # item on hold is not allowed.
+        if ( !$allow_sip && !$allow_sco ) {
+            return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
+                borrowernumber => 0 + $found_bn,
+                status        => $status,
             );
         }
     }
+
+    # Candidate (not yet found) holds only matter when checking out an item on
+    # hold is disallowed.
+    if ( !$allow_sip && !$allow_sco ) {
+        # Item-level holds.
+        my $item_hold_sth = $dbh->prepare_cached(q{
+            SELECT borrowernumber
+            FROM reserves
+            WHERE itemnumber = ? AND found IS NULL AND suspend = 0
+            ORDER BY priority
+            LIMIT 1
+        });
+        $item_hold_sth->execute( 0 + $item->itemnumber );
+        my ($item_hold_bn) = $item_hold_sth->fetchrow_array;
+        $item_hold_sth->finish;
+
+        if ( defined $item_hold_bn ) {
+            return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
+                borrowernumber => 0 + $item_hold_bn,
+                status        => 'Reserved',
+            );
+        }
+
+        # When the real-time holds queue is maintained, use it to detect
+        # biblio-level holds assigned to this item.
+        if ( C4::Context->preference('RealTimeHoldsQueue') ) {
+            my $queue_bn;
+            eval {
+                my $queue_item = Koha::Hold::HoldsQueueItems->find( $item->itemnumber );
+                $queue_bn = $queue_item ? $queue_item->borrowernumber : undef;
+            };
+            if ( defined $queue_bn ) {
+                return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
+                    borrowernumber => 0 + $queue_bn,
+                    status        => 'Reserved',
+                );
+            }
+        } else {
+            # Preserve original behaviour when the real-time queue is off.
+            if ( my ( $s, $reserve ) = C4::Reserves::CheckReserves($item) ) {
+                if ( $reserve && $reserve->{'itemnumber'} == $item->itemnumber ) {
+                    return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
+                        borrowernumber => 0 + $reserve->{'borrowernumber'},
+                        status        => $s,
+                    );
+                }
+            }
+        }
+    }
+
     return;
 }
 
