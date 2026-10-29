@@ -178,9 +178,11 @@ sub held {
     my $item = $self->item;
 
     # Allow disabling the optimized path for testing/comparison on a server.
-    # Set environment variable REST_DI_DISABLE_HELD_OPTIMIZATION=1 to fall back
-    # to the original C4::Reserves::CheckReserves implementation.
-    if ( $ENV{REST_DI_DISABLE_HELD_OPTIMIZATION} ) {
+    # Set environment variable REST_DI_DISABLE_HELD_OPTIMIZATION=1 or system
+    # preference RESTDIDisableHeldOptimization=1 to fall back to the original
+    # C4::Reserves::CheckReserves implementation.
+    if ( $ENV{REST_DI_DISABLE_HELD_OPTIMIZATION}
+        || C4::Context->preference('RESTDIDisableHeldOptimization') ) {
         if ( my ( $s, $reserve ) = C4::Reserves::CheckReserves($item) ) {
             if (!$reserve) {
                 return;
