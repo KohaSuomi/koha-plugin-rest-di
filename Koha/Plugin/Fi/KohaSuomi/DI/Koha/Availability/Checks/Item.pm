@@ -177,6 +177,27 @@ sub held {
 
     my $item = $self->item;
 
+    # Allow disabling the optimized path for testing/comparison on a server.
+    # Set environment variable REST_DI_DISABLE_HELD_OPTIMIZATION=1 to fall back
+    # to the original C4::Reserves::CheckReserves implementation.
+    if ( $ENV{REST_DI_DISABLE_HELD_OPTIMIZATION} ) {
+        if ( my ( $s, $reserve ) = C4::Reserves::CheckReserves($item) ) {
+            if (!$reserve) {
+                return;
+            }
+            if ( $s eq 'Waiting' || $s eq 'Processing'
+                || ( $reserve->{'itemnumber'} == $item->itemnumber
+                    && !C4::Context->preference('AllowItemsOnHoldCheckoutSIP')
+                    && !C4::Context->preference('AllowItemsOnHoldCheckoutSCO') ) ) {
+                return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Held->new(
+                    borrowernumber => 0 + $reserve->{'borrowernumber'},
+                    status        => $s,
+                );
+            }
+        }
+        return;
+    }
+
     # Mirror C4::Reserves::CheckReserves early returns so that items that are
     # not trappable (e.g. on-order / not-for-loan items) are not reported as
     # held. This is especially important for on-order items that already have
