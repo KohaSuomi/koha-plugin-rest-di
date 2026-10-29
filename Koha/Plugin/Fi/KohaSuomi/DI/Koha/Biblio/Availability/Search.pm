@@ -114,8 +114,10 @@ sub _item_looper {
     # database queries during the availability loop. Can be disabled for
     # benchmarking/comparison with REST_DI_DISABLE_SEARCH_BATCH=1.
     my ( %batched_transfers, %batched_checkouts );
-    my $batch_transfers = ( @items && !$ENV{REST_DI_DISABLE_SEARCH_BATCH} && !$params->{ignore_transfer} );
-    my $batch_checkouts = ( @items && !$ENV{REST_DI_DISABLE_SEARCH_BATCH} && grep { $_->onloan } @items );
+    my $disable = $ENV{REST_DI_DISABLE_SEARCH_BATCH}
+        || C4::Context->preference('RESTDIDisableHeldOptimization');
+    my $batch_transfers = ( @items && !$disable && !$params->{ignore_transfer} );
+    my $batch_checkouts = ( @items && !$disable && grep { $_->onloan } @items );
     if ( $batch_transfers || $batch_checkouts ) {
         my @item_ids = map { $_->itemnumber } @items;
 
