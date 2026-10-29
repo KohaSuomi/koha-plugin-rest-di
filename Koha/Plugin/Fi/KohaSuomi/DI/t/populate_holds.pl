@@ -55,7 +55,7 @@ for ( my $i = 0; $i < $count; $i++ ) {
 
     $dbh->do(
         q|INSERT INTO reserves (borrowernumber, biblionumber, itemnumber, branchcode, priority, reservedate, found, suspend)
-          VALUES (?,?,?,?,NOW(),?,?,0)|,
+          VALUES (?,?,?,?,?,NOW(),?,0)|,
         undef,
         $borrowernumber,
         $biblionumber,
