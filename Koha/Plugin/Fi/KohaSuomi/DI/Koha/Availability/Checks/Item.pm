@@ -65,9 +65,11 @@ Returns Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::CheckedOut if i
 =cut
 
 sub checked_out {
-    my ($self, $issue) = @_;
+    my ($self, $issue, $loaded) = @_;
 
-    $issue ||= $self->item->checkout;
+    unless ($loaded) {
+        $issue = $self->item->checkout unless defined $issue;
+    }
     if (ref($issue) eq 'Koha::Checkout') {
         $issue = $issue->unblessed;
         $issue->{date_due} = dt_from_string($issue->{date_due});
@@ -560,9 +562,11 @@ Koha::Exceptions::Item::Transfer additional fields:
 =cut
 
 sub transfer {
-    my ($self) = @_;
+    my ($self, $transfer, $loaded) = @_;
 
-    my $transfer = $self->item->get_transfer;
+    unless ($loaded) {
+        $transfer = $self->item->get_transfer unless defined $transfer;
+    }
     if ($transfer) {
         return Koha::Plugin::Fi::KohaSuomi::DI::Koha::Exceptions::Item::Transfer->new(
             from_library => $transfer->frombranch,
