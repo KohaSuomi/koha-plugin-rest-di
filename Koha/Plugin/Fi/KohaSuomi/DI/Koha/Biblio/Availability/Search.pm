@@ -22,6 +22,8 @@ use Modern::Perl;
 
 use base qw(Koha::Plugin::Fi::KohaSuomi::DI::Koha::Biblio::Availability);
 
+use Koha::Checkouts;
+use Koha::Item::Transfers;
 use Koha::Plugin::Fi::KohaSuomi::DI::Koha::Item::Availability::Search;
 
 =head1 NAME
@@ -107,6 +109,58 @@ sub _item_looper {
 
     # Sort items for paging
     @items = sort { $a->itemnumber <=> $b->itemnumber } @items;
+
+    # Batch-load transfers and checkouts for all items to avoid per-item
+    # database queries during the availability loop. Can be disabled for
+    # benchmarking/comparison with REST_DI_DISABLE_SEARCH_BATCH=1.
+    my ( %batched_transfers, %batched_checkouts );
+    my $batch_transfers = ( @items && !$ENV{REST_DI_DISABLE_SEARCH_BATCH} && !$params->{ignore_transfer} );
+    my $batch_checkouts = ( @items && !$ENV{REST_DI_DISABLE_SEARCH_BATCH} && grep { $_->onloan } @items );
+    if ( $batch_transfers || $batch_checkouts ) {
+        my @item_ids = map { $_->itemnumber } @items;
+
+        if ($batch_transfers) {
+            my %transfers_by_item;
+            my @transfer_rows = Koha::Item::Transfers->search(
+                {
+                    itemnumber    => { -in => \@item_ids },
+                    datearrived   => undef,
+                    datecancelled => undef,
+                }
+            )->as_list;
+            for my $t (@transfer_rows) {
+                push @{ $transfers_by_item{ $t->itemnumber } }, $t;
+            }
+            for my $id ( keys %transfers_by_item ) {
+                my @sorted = sort {
+                    my $a_sent = $a->datesent // '';
+                    my $b_sent = $b->datesent // '';
+                    if ( $a_sent ne $b_sent ) {
+                        return $b_sent cmp $a_sent;
+                    }
+                    return ( $a->daterequested // '' ) cmp ( $b->daterequested // '' );
+                } @{ $transfers_by_item{$id} };
+                $batched_transfers{$id} = $sorted[0];
+            }
+            for my $it (@items) {
+                $batched_transfers{ $it->itemnumber } //= undef;
+            }
+            $params->{transfers} = \%batched_transfers;
+        }
+
+        if ($batch_checkouts) {
+            my @checkout_rows = Koha::Checkouts->search(
+                { itemnumber => { -in => \@item_ids } }
+            )->as_list;
+            for my $c (@checkout_rows) {
+                $batched_checkouts{ $c->itemnumber } = $c;
+            }
+            for my $it (@items) {
+                $batched_checkouts{ $it->itemnumber } //= undef;
+            }
+            $params->{checkouts} = \%batched_checkouts;
+        }
+    }
 
     my $opachiddenitems_rules = C4::Context->yaml_preference('OpacHiddenItems');
 

@@ -50,14 +50,24 @@ sub in_opac {
     $self->unavailable($reason) if $reason = $itemcalc->unknown_barcode;
     $self->unavailable($reason) if $reason = $itemcalc->withdrawn;
     if ($itemcalc->onloan) {
-        $self->unavailable($reason) if $reason = $itemcalc->checked_out;
+        if ( ref( $params->{checkouts} ) eq 'HASH' ) {
+            my $issue = $params->{checkouts}{ $item->itemnumber };
+            $self->unavailable($reason) if $reason = $itemcalc->checked_out( $issue, 1 );
+        } else {
+            $self->unavailable($reason) if $reason = $itemcalc->checked_out();
+        }
     }
 
     if (!$params->{'ignore_holds'}) {
         $self->unavailable($reason) if $reason = $itemcalc->held;
     }
     if (!$params->{'ignore_transfer'}) {
-        $self->unavailable($reason) if $reason = $itemcalc->transfer;
+        if ( ref( $params->{transfers} ) eq 'HASH' ) {
+            my $transfer = $params->{transfers}{ $item->itemnumber };
+            $self->unavailable($reason) if $reason = $itemcalc->transfer( $transfer, 1 );
+        } else {
+            $self->unavailable($reason) if $reason = $itemcalc->transfer();
+        }
     }
     if (C4::Context->preference('UseRecalls')) {
         $self->unavailable($reason) if $reason = $itemcalc->recalled;
